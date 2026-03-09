@@ -190,7 +190,65 @@ To install the GUI:
 `);
 }
 
-function main(): void {
+function startApiServer(): ReturnType<typeof spawn> {
+  const serverScript = join(__dirname, '..', 'api', 'index.js');
+
+  if (!existsSync(serverScript)) {
+    console.error(`API server not found at: ${serverScript}`);
+    process.exit(1);
+  }
+
+  console.log('Starting API server...');
+  const server = spawn(process.execPath, [serverScript], {
+    stdio: 'pipe',
+    env: { ...process.env },
+  });
+
+  server.stdout?.on('data', (data: Buffer) => {
+    const msg = data.toString().trim();
+    if (msg) console.log(`[server] ${msg}`);
+  });
+
+  server.stderr?.on('data', (data: Buffer) => {
+    const msg = data.toString().trim();
+    if (msg) console.error(`[server] ${msg}`);
+  });
+
+  return server;
+}
+
+function waitForServer(timeoutMs = 5000): Promise<void> {
+  const start = Date.now();
+  return new Promise((resolve, reject) => {
+    const check = () => {
+      fetch('http://localhost:3847/api/health')
+        .then(res => {
+          if (res.ok) resolve();
+          else retry();
+        })
+        .catch(retry);
+    };
+    const retry = () => {
+      if (Date.now() - start > timeoutMs) {
+        reject(new Error('API server failed to start'));
+      } else {
+        setTimeout(check, 200);
+      }
+    };
+    check();
+  });
+}
+
+function isGuiRunning(): boolean {
+  try {
+    execSync('pgrep -f "invoicr-gui"', { stdio: 'ignore' });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function main(): Promise<void> {
   const result = findBinary();
 
   if (!result) {
@@ -199,7 +257,6 @@ function main(): void {
   }
 
   if (result.isInstaller) {
-    // On Windows, if we only have the installer, run it
     console.log('Invoicr is not installed yet.');
     console.log(`Found installer at: ${result.path}`);
     console.log('');
@@ -207,7 +264,39 @@ function main(): void {
     return;
   }
 
+  // Start API server and wait for it to be ready
+  const server = startApiServer();
+
+  const cleanup = () => {
+    if (!server.killed) {
+      server.kill();
+    }
+  };
+
+  process.on('SIGINT', cleanup);
+  process.on('SIGTERM', cleanup);
+  process.on('exit', cleanup);
+
+  try {
+    await waitForServer();
+    console.log('API server ready.');
+  } catch {
+    console.error('Failed to start API server. Launching GUI anyway...');
+  }
+
   launchApp(result.path);
+
+  // On macOS, 'open' returns immediately, so keep process alive
+  // and monitor the GUI; exit when it closes
+  if (process.platform === 'darwin') {
+    const poll = setInterval(() => {
+      if (!isGuiRunning()) {
+        clearInterval(poll);
+        cleanup();
+        process.exit(0);
+      }
+    }, 2000);
+  }
 }
 
 main();
