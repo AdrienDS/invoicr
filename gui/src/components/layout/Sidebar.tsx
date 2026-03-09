@@ -40,12 +40,17 @@ export function Sidebar({
   const [showSettings, setShowSettings] = useState(false);
 
   const handleOpenLink = async (url: string) => {
-    try {
-      await open(url);
-    } catch (err) {
-      console.error('Failed to open link:', err);
-      window.open(url, '_blank');
+    // Check if we're in Tauri environment
+    if (window.__TAURI_INTERNALS__) {
+      try {
+        await open(url);
+        return;
+      } catch (err) {
+        console.error('Failed to open link via Tauri:', err);
+      }
     }
+    // Fallback for web browser
+    window.open(url, '_blank');
   };
 
   useEffect(() => {
