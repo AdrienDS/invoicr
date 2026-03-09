@@ -51,14 +51,22 @@ export function buildEmailBody(
   servicePeriod: string,
   serviceDescription: string,
   totalAmount: string,
-  providerName: string
+  providerName: string,
+  monthName?: string
 ): string {
-  return template
+  let result = template
     .replace('{{invoiceNumber}}', invoiceNumber)
     .replace('{{servicePeriod}}', servicePeriod)
     .replace('{{serviceDescription}}', serviceDescription)
     .replace('{{totalAmount}}', totalAmount)
     .replace(/\{\{providerName\}\}/g, providerName);
+
+  // Also replace monthName if provided (some clients use this instead of servicePeriod)
+  if (monthName) {
+    result = result.replace(/\{\{monthName\}\}/g, monthName);
+  }
+
+  return result;
 }
 
 /**
@@ -212,7 +220,8 @@ export function prepareEmail(
     servicePeriod,
     emailServiceDescription,
     totalAmountStr,
-    provider.name
+    provider.name,
+    monthName
   );
 
   // Build AppleScript recipient lines
@@ -344,7 +353,9 @@ export function buildBatchEmailBody(
     return `- ${invoice.client.name}: Invoice ${invoice.invoiceNumber} (${amount})`;
   }).join('\n');
 
-  let body = `Please find attached the following invoices for ${monthNames.join(', ')}:
+  let body = `Hello,
+
+Please find attached the following invoices for ${monthNames.join(', ')}:
 
 ${invoiceLines}
 `;
