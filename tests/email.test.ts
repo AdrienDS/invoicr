@@ -9,7 +9,11 @@ import {
   resolveEmailLanguage,
   loadEmailTranslations,
   getEmailTemplates,
-  prepareEmail
+  prepareEmail,
+  buildBatchEmailSubject,
+  buildBatchEmailBody,
+  prepareBatchEmail,
+  BatchInvoiceInfo,
 } from '../src/email.js';
 import { InvoiceContext, BankDetails, Provider, Client, Translations, ResolvedLineItem } from '../src/types.js';
 
@@ -521,5 +525,169 @@ describe('prepareEmail', () => {
     expect(result).not.toBeNull();
     // Body should contain formatted currency
     expect(result!.body).toBeDefined();
+  });
+});
+
+// Helper to create batch invoice info
+function makeBatchInvoice(overrides: Partial<BatchInvoiceInfo> = {}): BatchInvoiceInfo {
+  return {
+    client: {
+      name: 'Test Client',
+      address: { street: '123 Main St', city: 'Berlin' },
+      language: 'en',
+      invoicePrefix: 'TC',
+      nextInvoiceNumber: 2,
+      service: { description: 'Consulting', billingType: 'hourly', rate: 100, currency: 'EUR' },
+      email: { to: ['client@example.com'], cc: ['cc@example.com'] },
+    },
+    invoiceNumber: 'TC-1',
+    monthName: 'January 2025',
+    totalAmount: 5000,
+    currency: 'EUR',
+    pdfPath: '/path/invoice.pdf',
+    ...overrides,
+  };
+}
+
+describe('buildBatchEmailSubject', () => {
+  it('should include month and client names', () => {
+    const invoices = [makeBatchInvoice()];
+    const subject = buildBatchEmailSubject(invoices, 'Provider Inc', false);
+    expect(subject).toContain('January 2025');
+    expect(subject).toContain('Test Client');
+  });
+
+  it('should add [TEST] prefix in test mode', () => {
+    const invoices = [makeBatchInvoice()];
+    const subject = buildBatchEmailSubject(invoices, 'Provider Inc', true);
+    expect(subject).toMatch(/^\[TEST\]/);
+  });
+
+  it('should deduplicate month names', () => {
+    const invoices = [
+      makeBatchInvoice({ monthName: 'January 2025' }),
+      makeBatchInvoice({ monthName: 'January 2025', client: { ...makeBatchInvoice().client, name: 'Other' } }),
+    ];
+    const subject = buildBatchEmailSubject(invoices, 'Provider', false);
+    // Should only contain January 2025 once
+    expect(subject.match(/January 2025/g)).toHaveLength(1);
+  });
+
+  it('should list multiple client names', () => {
+    const invoices = [
+      makeBatchInvoice(),
+      makeBatchInvoice({ client: { ...makeBatchInvoice().client, name: 'Other Client' } }),
+    ];
+    const subject = buildBatchEmailSubject(invoices, 'Provider', false);
+    expect(subject).toContain('Test Client');
+    expect(subject).toContain('Other Client');
+  });
+});
+
+describe('buildBatchEmailBody', () => {
+  it('should include greeting', () => {
+    const invoices = [makeBatchInvoice()];
+    const body = buildBatchEmailBody(invoices, 'Provider Inc', 'en');
+    expect(body).toContain('Hello,');
+  });
+
+  it('should list each invoice', () => {
+    const invoices = [
+      makeBatchInvoice({ invoiceNumber: 'TC-1', totalAmount: 5000 }),
+      makeBatchInvoice({ invoiceNumber: 'TC-2', totalAmount: 3000, client: { ...makeBatchInvoice().client, name: 'Other' } }),
+    ];
+    const body = buildBatchEmailBody(invoices, 'Provider', 'en');
+    expect(body).toContain('TC-1');
+    expect(body).toContain('TC-2');
+    expect(body).toContain('Test Client');
+    expect(body).toContain('Other');
+  });
+
+  it('should include grand total for same currency', () => {
+    const invoices = [
+      makeBatchInvoice({ totalAmount: 5000, currency: 'EUR' }),
+      makeBatchInvoice({ totalAmount: 3000, currency: 'EUR' }),
+    ];
+    const body = buildBatchEmailBody(invoices, 'Provider', 'en');
+    expect(body).toContain('Total:');
+  });
+
+  it('should omit grand total for mixed currencies', () => {
+    const invoices = [
+      makeBatchInvoice({ totalAmount: 5000, currency: 'EUR' }),
+      makeBatchInvoice({ totalAmount: 3000, currency: 'USD' }),
+    ];
+    const body = buildBatchEmailBody(invoices, 'Provider', 'en');
+    expect(body).not.toContain('Total:');
+  });
+
+  it('should omit grand total for single invoice', () => {
+    const invoices = [makeBatchInvoice({ totalAmount: 5000, currency: 'EUR' })];
+    const body = buildBatchEmailBody(invoices, 'Provider', 'en');
+    expect(body).not.toContain('Total:');
+  });
+
+  it('should include provider name as sign-off', () => {
+    const invoices = [makeBatchInvoice()];
+    const body = buildBatchEmailBody(invoices, 'Provider Inc', 'en');
+    expect(body).toContain('Provider Inc');
+  });
+});
+
+describe('prepareBatchEmail', () => {
+  const provider: Provider = {
+    name: 'Provider Inc',
+    address: { street: '1 Main St', city: 'Berlin' },
+    phone: '+49 123',
+    email: 'provider@example.com',
+    bank: { name: 'Bank', iban: 'DE123', bic: 'BIC' },
+    taxNumber: '123',
+  };
+
+  it('should return null for empty invoices', () => {
+    expect(prepareBatchEmail([], provider, false)).toBeNull();
+  });
+
+  it('should return null when no recipients configured', () => {
+    const inv = makeBatchInvoice({ client: { ...makeBatchInvoice().client, email: undefined } });
+    expect(prepareBatchEmail([inv], provider, false)).toBeNull();
+  });
+
+  it('should return null when to array is empty', () => {
+    const inv = makeBatchInvoice({ client: { ...makeBatchInvoice().client, email: { to: [] } } });
+    expect(prepareBatchEmail([inv], provider, false)).toBeNull();
+  });
+
+  it('should prepare email with correct fields', () => {
+    const invoices = [makeBatchInvoice()];
+    const result = prepareBatchEmail(invoices, provider, false);
+    expect(result).not.toBeNull();
+    expect(result!.toAddresses).toEqual(['client@example.com']);
+    expect(result!.ccAddresses).toEqual(['cc@example.com']);
+    expect(result!.senderEmail).toBe('provider@example.com');
+    expect(result!.subject).toContain('January 2025');
+    expect(result!.body).toContain('Hello,');
+    expect(result!.appleScript).toContain('tell application "Mail"');
+  });
+
+  it('should send to provider in test mode', () => {
+    const invoices = [makeBatchInvoice()];
+    const result = prepareBatchEmail(invoices, provider, true);
+    expect(result).not.toBeNull();
+    expect(result!.toAddresses).toEqual(['provider@example.com']);
+    expect(result!.ccAddresses).toEqual([]);
+    expect(result!.subject).toContain('[TEST]');
+  });
+
+  it('should include PDF and e-invoice attachments', () => {
+    const invoices = [
+      makeBatchInvoice({ pdfPath: '/a.pdf', eInvoicePath: '/a.xml' }),
+      makeBatchInvoice({ pdfPath: '/b.pdf' }),
+    ];
+    const result = prepareBatchEmail(invoices, provider, false);
+    expect(result).not.toBeNull();
+    expect(result!.appleScript).toContain('/a.pdf');
+    expect(result!.appleScript).toContain('/a.xml');
+    expect(result!.appleScript).toContain('/b.pdf');
   });
 });
