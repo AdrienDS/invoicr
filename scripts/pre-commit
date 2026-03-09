@@ -1,0 +1,33 @@
+#!/usr/bin/env bash
+set -e
+
+echo "=== Pre-commit checks ==="
+
+echo ""
+echo "--- TypeScript build (src/) ---"
+npm run build
+echo "Build OK"
+
+echo ""
+echo "--- Backend tests ---"
+npm test
+echo "Backend tests OK"
+
+# GUI checks (skip gracefully if gui/node_modules not installed)
+if [ -d "gui/node_modules" ]; then
+  echo ""
+  echo "--- GUI TypeScript check ---"
+  (cd gui && npx tsc --noEmit)
+  echo "GUI TypeScript OK"
+
+  echo ""
+  echo "--- GUI tests ---"
+  (cd gui && npm test)
+  echo "GUI tests OK"
+else
+  echo ""
+  echo "--- Skipping GUI checks (gui/node_modules not installed) ---"
+fi
+
+echo ""
+echo "=== All pre-commit checks passed ==="

@@ -153,11 +153,15 @@ See `examples/` for complete client configuration templates:
 ## Development
 
 ```bash
-npm run build      # Compile TypeScript
-npm test           # Run tests (700+ tests)
-npm run dev        # Run with tsx
-npm run api-server # Start API server
+npm install
+npm run setup-hooks # Install pre-commit hook (build + test)
+npm run build       # Compile TypeScript
+npm test            # Run tests (700+ tests)
+npm run dev         # Run with tsx
+npm run api-server  # Start API server
 ```
+
+The pre-commit hook runs TypeScript compilation and tests for both the backend and GUI before each commit.
 
 ## License
 
