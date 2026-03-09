@@ -279,11 +279,33 @@ describe('parseCliArgs', () => {
     }
   });
 
-  it('should return error for invalid format (no colon)', () => {
+  it('should treat bare arg as client name (for --previous-amount)', () => {
     const result = parseCliArgs(['acme40']);
-    expect('error' in result).toBe(true);
-    if ('error' in result) {
-      expect(result.error).toContain('client:quantity');
+    expect('config' in result).toBe(true);
+    if ('config' in result) {
+      expect(result.config.invoices[0].client).toBe('acme40');
+      expect(result.config.invoices[0].quantity).toBeUndefined();
+    }
+  });
+
+  it('should parse --previous-amount flag', () => {
+    const result = parseCliArgs(['acme', 'other', '--previous-amount']);
+    expect('config' in result).toBe(true);
+    if ('config' in result) {
+      expect(result.previousAmount).toBe(true);
+      expect(result.config.invoices).toHaveLength(2);
+      expect(result.config.invoices[0].client).toBe('acme');
+      expect(result.config.invoices[0].quantity).toBeUndefined();
+      expect(result.config.invoices[1].client).toBe('other');
+    }
+  });
+
+  it('should mix client:qty and bare client names', () => {
+    const result = parseCliArgs(['acme:40', 'other', '--previous-amount']);
+    expect('config' in result).toBe(true);
+    if ('config' in result) {
+      expect(result.config.invoices[0].quantity).toBe(40);
+      expect(result.config.invoices[1].quantity).toBeUndefined();
     }
   });
 

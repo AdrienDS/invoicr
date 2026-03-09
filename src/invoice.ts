@@ -10,6 +10,8 @@ import { createEmail } from './email.js';
 import { validateProvider, validateClient } from './schemas/index.js';
 import { saveToHistory } from './history.js';
 import { canGenerateEInvoice, getDefaultFormat, validateForEInvoice, generateEInvoice, saveEInvoice } from './einvoice/index.js';
+import { getLastInvoice } from './lib/history-manager.js';
+import { loadTranslations } from './api/helpers/translations.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -19,6 +21,9 @@ const args = process.argv.slice(2);
 
 // Check for --dry-run flag
 const isDryRun = args.includes('--dry-run');
+
+// Check for --previous-amount flag
+const previousAmount = args.includes('--previous-amount');
 
 // Check for --einvoice flag
 const einvoiceArg = args.find(a => a.startsWith('--einvoice'));
@@ -34,10 +39,13 @@ const templateOverride = templateArg?.split('=')[1];
 // Filter out flags to get positional arguments
 const positionalArgs = args.filter(a => !a.startsWith('--'));
 
-if (positionalArgs.length < 2) {
-  console.error('Usage: invoicr <client-folder> <quantity> [options]');
+// Allow quantity to be omitted if --previous-amount is provided
+const requiredArgs = previousAmount ? 1 : 2;
+if (positionalArgs.length < requiredArgs) {
+  console.error('Usage: invoicr <client-folder> [quantity] [options]');
   console.error('');
   console.error('Options:');
+  console.error('  --previous-amount   Use amount from last invoice (omit quantity)');
   console.error('  --month=MM-YYYY     Specify billing month (default: previous month)');
   console.error('  --template=NAME     Use specific template (default, minimal, detailed, or custom)');
   console.error('  --email             Create email draft with invoice attached');
@@ -50,6 +58,7 @@ if (positionalArgs.length < 2) {
   console.error('Examples:');
   console.error('  invoicr acme-hourly 40');
   console.error('  invoicr acme-daily 5 --month=10-2025');
+  console.error('  invoicr acme-fixed --previous-amount --email');
   console.error('  invoicr acme-hourly 8 --email');
   console.error('  invoicr acme-daily 2 --dry-run');
   console.error('  invoicr acme-hourly 40 --einvoice');
@@ -59,14 +68,17 @@ if (positionalArgs.length < 2) {
 }
 
 const clientFolder = positionalArgs[0];
-const quantity = parseFloat(positionalArgs[1]);
+let quantity = positionalArgs[1] ? parseFloat(positionalArgs[1]) : 0;
 const monthArg = args.find(a => a.startsWith('--month='));
 const shouldEmail = args.includes('--email');
 const isTestMode = args.includes('--test');
 
-if (isNaN(quantity) || quantity <= 0) {
-  console.error('Error: quantity must be a positive number');
-  process.exit(1);
+// Validate quantity only if not using --previous-amount
+if (!previousAmount) {
+  if (isNaN(quantity) || quantity <= 0) {
+    console.error('Error: quantity must be a positive number');
+    process.exit(1);
+  }
 }
 
 // Load configuration files
@@ -138,10 +150,21 @@ try {
   process.exit(1);
 }
 
+// Resolve quantity from history if --previous-amount is used
+const outputDir = path.dirname(clientPath);
+if (previousAmount && quantity === 0) {
+  const lastInvoice = getLastInvoice(outputDir);
+  if (!lastInvoice) {
+    console.error(`Error: No previous invoice found for "${clientFolder}". Please specify amount.`);
+    process.exit(1);
+  }
+  quantity = lastInvoice.rate || lastInvoice.totalAmount;
+  console.log(`Using amount from last invoice: ${quantity}`);
+}
+
 // Load translations
 const lang = client.language || 'de';
-const translationsPath = path.join(__dirname, 'translations', `${lang}.json`);
-const translations: Translations = JSON.parse(fs.readFileSync(translationsPath, 'utf8'));
+const translations = loadTranslations(lang);
 
 // Generate dates
 let billingMonth = new Date();
@@ -256,7 +279,6 @@ const ctx: InvoiceContext = {
 };
 
 // Generate output filenames
-const outputDir = path.dirname(clientPath);
 const monthStr = billingMonth.toLocaleDateString('en-US', { month: 'long', year: 'numeric' }).replace(' ', '_');
 const baseFilename = `${translations.filePrefix}_${invoiceNumber}_${monthStr}`;
 const docxPath = path.join(outputDir, `${baseFilename}.docx`);

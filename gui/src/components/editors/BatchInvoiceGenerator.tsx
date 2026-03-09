@@ -1,8 +1,8 @@
 import { useState, useMemo } from 'react';
 import { ArrowLeft, FileText, Loader2, AlertCircle, Check, Calendar, Mail, Users, ChevronDown, ChevronRight } from 'lucide-react';
-import { useClients, useClient } from '../../hooks/useClients';
+import { useClients } from '../../hooks/useClients';
 import { useGenerateInvoice, useLibreOfficeStatus } from '../../hooks/useInvoice';
-import { fileApi, ClientSummary, Client } from '../../services/api';
+import { fileApi, ClientSummary } from '../../services/api';
 
 interface BatchInvoiceGeneratorProps {
   persona: string;

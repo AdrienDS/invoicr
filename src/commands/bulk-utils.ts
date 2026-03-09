@@ -1,10 +1,11 @@
 /**
  * Bulk invoice configuration types and utilities
  */
+import { getClientInfo, getLastInvoice } from '../lib/index.js';
 
 export interface BulkInvoice {
   client: string;
-  quantity: number;
+  quantity?: number;  // Optional when --previous-amount flag is used
   month?: string;
   email?: boolean;
 }
@@ -48,7 +49,8 @@ export function validateBulkConfig(data: unknown): { config: BulkConfig } | { er
       errors.push({ index: i, message: 'Missing or invalid "client" field' });
     }
 
-    if (typeof inv.quantity !== 'number' || inv.quantity <= 0) {
+    // Quantity validation - allow undefined (will be resolved from history if --previous-amount is used)
+    if (inv.quantity !== undefined && (typeof inv.quantity !== 'number' || inv.quantity <= 0)) {
       errors.push({ index: i, message: 'Invalid "quantity" (must be positive number)' });
     }
 
@@ -72,6 +74,10 @@ export function validateBulkConfig(data: unknown): { config: BulkConfig } | { er
  * Build command arguments for a single invoice
  */
 export function buildInvoiceArgs(invoice: BulkInvoice, isDryRun: boolean): string[] {
+  // quantity must be defined by the time we build args (resolved from history if needed)
+  if (invoice.quantity === undefined) {
+    throw new Error(`Cannot build args for ${invoice.client}: quantity is undefined`);
+  }
   const cmdArgs: string[] = [invoice.client, invoice.quantity.toString()];
 
   if (invoice.month) {
@@ -123,20 +129,25 @@ export function buildSummaryOutput(successCount: number, errorCount: number, isD
 
 /**
  * Parse CLI arguments into BulkConfig
- * Format: client1:qty1 client2:qty2 [--month=MM-YYYY] [--email]
+ * Format: client1:qty1 client2:qty2 [--month=MM-YYYY] [--email] [--previous-amount]
+ * With --previous-amount: client1 client2 (quantities fetched from history)
  * Example: acme:40 other:10 --month=11-2025 --email
+ * Example: acme other --previous-amount --month=11-2025 --email
  */
-export function parseCliArgs(args: string[]): { config: BulkConfig; isDryRun: boolean } | { error: string } {
+export function parseCliArgs(args: string[]): { config: BulkConfig; isDryRun: boolean; previousAmount: boolean } | { error: string } {
   const invoices: BulkInvoice[] = [];
   let globalMonth: string | undefined;
   let globalEmail = false;
   let isDryRun = false;
+  let previousAmount = false;
 
   for (const arg of args) {
     if (arg === '--dry-run') {
       isDryRun = true;
     } else if (arg === '--email') {
       globalEmail = true;
+    } else if (arg === '--previous-amount') {
+      previousAmount = true;
     } else if (arg.startsWith('--month=')) {
       globalMonth = arg.replace('--month=', '');
     } else if (arg.includes(':')) {
@@ -152,12 +163,17 @@ export function parseCliArgs(args: string[]): { config: BulkConfig; isDryRun: bo
       }
       invoices.push({ client, quantity });
     } else if (!arg.startsWith('--')) {
-      return { error: `Invalid argument "${arg}". Use client:quantity format (e.g., acme:40)` };
+      // Client name without quantity (only valid with --previous-amount)
+      const client = arg;
+      if (!client) {
+        return { error: 'Client name cannot be empty' };
+      }
+      invoices.push({ client, quantity: undefined });
     }
   }
 
   if (invoices.length === 0) {
-    return { error: 'No invoices specified. Use client:quantity format (e.g., acme:40 other:10)' };
+    return { error: 'No invoices specified. Use client:quantity format (e.g., acme:40 other:10) or client names with --previous-amount' };
   }
 
   // Apply global options to all invoices
@@ -166,5 +182,36 @@ export function parseCliArgs(args: string[]): { config: BulkConfig; isDryRun: bo
     if (globalEmail) inv.email = true;
   }
 
-  return { config: { invoices }, isDryRun };
+  return { config: { invoices }, isDryRun, previousAmount };
+}
+
+/**
+ * Resolve missing quantities by fetching from client history
+ * Only used when --previous-amount flag is present
+ */
+export function resolveQuantityFromHistory(
+  invoice: BulkInvoice,
+  clientsDir: string
+): BulkInvoice | { error: string } {
+  if (invoice.quantity !== undefined) {
+    return invoice; // Already has quantity
+  }
+
+  const clientInfo = getClientInfo(clientsDir, invoice.client);
+  if (!clientInfo) {
+    return { error: `Client "${invoice.client}" not found` };
+  }
+
+  const lastInvoice = getLastInvoice(clientInfo.directory);
+  if (!lastInvoice) {
+    return { error: `No previous invoice found for "${invoice.client}". Please specify amount.` };
+  }
+
+  // Use rate if available (for fixed billing), otherwise use totalAmount
+  const quantity = lastInvoice.rate || lastInvoice.totalAmount;
+
+  return {
+    ...invoice,
+    quantity
+  };
 }

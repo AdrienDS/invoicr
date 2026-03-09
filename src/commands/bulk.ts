@@ -10,6 +10,7 @@ import {
   formatProgress,
   buildSummaryOutput,
   parseCliArgs,
+  resolveQuantityFromHistory,
   BulkConfig
 } from './bulk-utils.js';
 import {
@@ -36,6 +37,7 @@ if (args.includes('--help') || args.includes('-h') || args.length === 0) {
   console.log('Generate multiple invoices from a config file or CLI arguments');
   console.log('');
   console.log('Options:');
+  console.log('  --previous-amount   Use amount from last invoice (omit quantity)');
   console.log('  --dry-run           Preview all invoices without generating');
   console.log('  --month=MM-YYYY     Set billing month for all invoices (CLI mode)');
   console.log('  --email             Create email drafts for all invoices');
@@ -51,6 +53,7 @@ if (args.includes('--help') || args.includes('-h') || args.length === 0) {
   console.log('CLI mode examples:');
   console.log('  invoicr-bulk acme:40 other:10');
   console.log('  invoicr-bulk acme:40 other:10 --month=11-2025 --email');
+  console.log('  invoicr-bulk acme other --previous-amount --email');
   console.log('  invoicr-bulk acme:40 --dry-run');
   console.log('');
   console.log('Config file mode examples:');
@@ -74,6 +77,7 @@ const isFileMode = firstArg && (firstArg.endsWith('.json') || fs.existsSync(firs
 
 let config: BulkConfig;
 let isDryRun: boolean;
+let previousAmount: boolean;
 
 // Check for batch email flags
 const noBatchEmail = args.includes('--no-batch-email');
@@ -83,6 +87,7 @@ if (isFileMode) {
   // File mode
   const configFile = firstArg!;
   isDryRun = args.includes('--dry-run');
+  previousAmount = args.includes('--previous-amount');
 
   const configPath = path.isAbsolute(configFile) ? configFile : path.join(process.cwd(), configFile);
 
@@ -123,6 +128,30 @@ if (isFileMode) {
 
   config = parseResult.config;
   isDryRun = parseResult.isDryRun;
+  previousAmount = parseResult.previousAmount;
+}
+
+// Resolve missing quantities from history if --previous-amount flag is present
+if (previousAmount) {
+  const paths = getDefaultPaths();
+  for (let i = 0; i < config.invoices.length; i++) {
+    if (config.invoices[i].quantity === undefined) {
+      const result = resolveQuantityFromHistory(config.invoices[i], paths.clients);
+      if ('error' in result) {
+        console.error(`Error: ${result.error}`);
+        process.exit(1);
+      }
+      config.invoices[i] = result;
+    }
+  }
+} else {
+  // Without --previous-amount, enforce that all quantities are specified
+  for (let i = 0; i < config.invoices.length; i++) {
+    if (config.invoices[i].quantity === undefined) {
+      console.error(`Error: invoice ${i + 1} (${config.invoices[i].client}): quantity is required (use --previous-amount flag to use last invoice amount)`);
+      process.exit(1);
+    }
+  }
 }
 
 // Check if any invoices need email
@@ -157,7 +186,7 @@ let errorCount = 0;
 for (let i = 0; i < config.invoices.length; i++) {
   const inv = config.invoices[i];
 
-  console.log(formatProgress(i + 1, config.invoices.length, inv.client, inv.quantity));
+  console.log(formatProgress(i + 1, config.invoices.length, inv.client, inv.quantity!));
 
   // Build command - suppress individual emails if batch mode enabled
   const invCopy = { ...inv };
