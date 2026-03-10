@@ -35,10 +35,19 @@ export function loadProvider(providerPath: string): Provider {
 }
 
 /**
- * Save provider configuration
+ * Save provider configuration.
+ * For backward compatibility, if `banks` is present, also writes `bank` as the first entry
+ * (without label) so older CLI versions still work.
  */
 export function saveProvider(provider: Provider, providerPath: string): void {
   const data = validateProvider(provider);
+
+  // Backward compat: ensure `bank` is set from `banks[0]` if only `banks` is provided
+  if (data.banks && data.banks.length > 0 && !data.bank) {
+    const { label: _, ...firstBank } = data.banks[0];
+    (data as Record<string, unknown>).bank = firstBank;
+  }
+
   fs.writeFileSync(providerPath, JSON.stringify(data, null, 2));
 }
 

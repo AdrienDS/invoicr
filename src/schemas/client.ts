@@ -68,6 +68,7 @@ export const clientSchema = z.object({
   projectReference: z.string().optional(),
   service: serviceSchema,
   bank: bankSchema.optional(),
+  bankLabel: z.string().optional(),
   paymentTermsDays: z.number().int().positive().nullable().optional(),
   email: emailConfigSchema.optional(),
   // Future fields (1.3.0+)

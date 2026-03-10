@@ -8,12 +8,20 @@ export interface PersonaInfo {
   clientCount: number;
 }
 
+export interface ProviderBank {
+  label: string;
+  name: string;
+  iban: string;
+  bic?: string;
+}
+
 export interface Provider {
   name: string;
   address: { street: string; city: string };
   phone?: string;
   email: string;
-  bank: { name: string; iban: string; bic?: string };
+  bank?: { name: string; iban: string; bic?: string };
+  banks?: ProviderBank[];
   taxNumber?: string;
   vatId?: string;
   countryCode?: string;
@@ -32,6 +40,8 @@ export interface Client {
     rate: number;
     currency: 'EUR' | 'USD';
   };
+  bank?: { name: string; iban: string; bic?: string };
+  bankLabel?: string;
   email?: { to: string[]; cc?: string[]; bcc?: string[]; subject?: string; body?: string };
   taxRate?: number;
   countryCode?: string;

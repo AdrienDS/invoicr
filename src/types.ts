@@ -154,6 +154,10 @@ export interface BankDetails {
   bic: string;
 }
 
+export interface LabeledBankDetails extends BankDetails {
+  label: string;
+}
+
 export interface ServiceDescription {
   de?: string;
   en?: string;
@@ -172,7 +176,8 @@ export interface Provider {
   address: Address;
   phone: string;
   email: string;
-  bank: BankDetails;
+  bank?: BankDetails;
+  banks?: LabeledBankDetails[];
   taxNumber: string;
   vatId?: string;
   logoPath?: string;  // Path to logo image (1.3.0+)
@@ -204,6 +209,7 @@ export interface Client {
   projectReference?: string;
   service: Service;
   bank?: BankDetails;
+  bankLabel?: string;
   paymentTermsDays?: number | null;
   email?: EmailConfig;
   // Future fields (1.3.0+)

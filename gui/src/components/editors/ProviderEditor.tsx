@@ -1,6 +1,6 @@
-import { useForm } from 'react-hook-form';
+import { useForm, useFieldArray } from 'react-hook-form';
 import { useEffect, useState } from 'react';
-import { Save, Building2, AlertCircle, Loader2, FileText, ChevronRight } from 'lucide-react';
+import { Save, Building2, AlertCircle, Loader2, FileText, ChevronRight, Plus, Trash2 } from 'lucide-react';
 import { useProvider, useSaveProvider } from '../../hooks/useProvider';
 import { useTemplates } from '../../hooks/useTemplates';
 import { Provider, countriesApi } from '../../services/api';
@@ -20,6 +20,7 @@ export function ProviderEditor({ persona, onNavigateToTemplates }: ProviderEdito
     register,
     handleSubmit,
     reset,
+    control,
     formState: { errors, isDirty },
   } = useForm<Provider>({
     defaultValues: {
@@ -27,16 +28,30 @@ export function ProviderEditor({ persona, onNavigateToTemplates }: ProviderEdito
       address: { street: '', city: '' },
       email: '',
       phone: '',
-      bank: { name: '', iban: '', bic: '' },
+      banks: [{ label: '', name: '', iban: '', bic: '' }],
       taxNumber: '',
       vatId: '',
       countryCode: 'DE',
     },
   });
 
+  const { fields, append, remove } = useFieldArray({
+    control,
+    name: 'banks',
+  });
+
   useEffect(() => {
     if (provider) {
-      reset(provider);
+      // Convert legacy single bank to banks array
+      const data = { ...provider };
+      if (!data.banks || data.banks.length === 0) {
+        if (data.bank) {
+          data.banks = [{ label: data.bank.name, ...data.bank }];
+        } else {
+          data.banks = [{ label: '', name: '', iban: '', bic: '' }];
+        }
+      }
+      reset(data);
     }
   }, [provider, reset]);
 
@@ -236,52 +251,84 @@ export function ProviderEditor({ persona, onNavigateToTemplates }: ProviderEdito
           </div>
         </section>
 
-        {/* Bank Information */}
+        {/* Bank Accounts */}
         <section className="bg-white rounded-lg border border-gray-200 p-6">
-          <h2 className="text-lg font-medium text-gray-900 mb-4">Bank Information</h2>
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-lg font-medium text-gray-900">Bank Accounts</h2>
+            <button
+              type="button"
+              onClick={() => append({ label: '', name: '', iban: '', bic: '' })}
+              className="flex items-center text-sm text-primary-600 hover:text-primary-700 transition-colors"
+            >
+              <Plus className="w-4 h-4 mr-1" />
+              Add Bank Account
+            </button>
+          </div>
 
-          <div className="space-y-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Bank Name *
-              </label>
-              <input
-                type="text"
-                {...register('bank.name', { required: 'Bank name is required' })}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
-                placeholder="Your Bank"
-              />
-              {errors.bank?.name && (
-                <p className="text-red-500 text-sm mt-1">{errors.bank.name.message}</p>
-              )}
-            </div>
+          <div className="space-y-6">
+            {fields.map((field, index) => (
+              <div key={field.id} className="space-y-4 p-4 bg-gray-50 rounded-lg relative">
+                {fields.length > 1 && (
+                  <button
+                    type="button"
+                    onClick={() => remove(index)}
+                    className="absolute top-3 right-3 text-gray-400 hover:text-red-500 transition-colors"
+                    title="Remove bank account"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                )}
 
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                IBAN *
-              </label>
-              <input
-                type="text"
-                {...register('bank.iban', { required: 'IBAN is required' })}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent font-mono"
-                placeholder="DE89 3704 0044 0532 0130 00"
-              />
-              {errors.bank?.iban && (
-                <p className="text-red-500 text-sm mt-1">{errors.bank.iban.message}</p>
-              )}
-            </div>
+                <div className={fields.length > 1 ? 'pr-8' : ''}>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Label *
+                  </label>
+                  <input
+                    type="text"
+                    {...register(`banks.${index}.label` as const, { required: 'Label is required' })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                    placeholder="e.g., EUR Account, USD Account"
+                  />
+                  <p className="text-gray-500 text-xs mt-1">Identifier for selecting this account per client</p>
+                </div>
 
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                BIC/SWIFT
-              </label>
-              <input
-                type="text"
-                {...register('bank.bic')}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent font-mono"
-                placeholder="COBADEFFXXX"
-              />
-            </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Bank Name *
+                  </label>
+                  <input
+                    type="text"
+                    {...register(`banks.${index}.name` as const, { required: 'Bank name is required' })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                    placeholder="Your Bank"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    IBAN *
+                  </label>
+                  <input
+                    type="text"
+                    {...register(`banks.${index}.iban` as const, { required: 'IBAN is required' })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent font-mono"
+                    placeholder="DE89 3704 0044 0532 0130 00"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    BIC/SWIFT
+                  </label>
+                  <input
+                    type="text"
+                    {...register(`banks.${index}.bic` as const)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent font-mono"
+                    placeholder="COBADEFFXXX"
+                  />
+                </div>
+              </div>
+            ))}
           </div>
         </section>
 

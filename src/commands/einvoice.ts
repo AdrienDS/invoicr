@@ -5,6 +5,7 @@ import { fileURLToPath } from 'url';
 import { Provider, Client, Translations, InvoiceContext, ResolvedLineItem, EInvoiceFormat, CountryCode } from '../types.js';
 import { formatDate, getServiceDescription, calculateDueDate } from '../utils.js';
 import { validateProvider, validateClient } from '../schemas/index.js';
+import { resolveBankDetails } from '../lib/bank-utils.js';
 import {
   canGenerateEInvoice,
   getDefaultFormat,
@@ -225,7 +226,7 @@ const baseDescription = getServiceDescription(client.service.description, lang);
 const serviceDescription = `${baseDescription}, ${lastInvoice.month}`;
 
 // Get bank details
-const bankDetails = client.bank || provider.bank;
+const bankDetails = resolveBankDetails(client, provider)!;
 
 // Build context
 const ctx: InvoiceContext = {

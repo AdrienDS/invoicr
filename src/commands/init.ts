@@ -71,6 +71,7 @@ async function main() {
   const email = await ask('Email address');
 
   console.log('\nBank Details:\n');
+  const bankLabel = await ask('Bank account label (e.g., EUR Account)', 'Main Account');
   const bankName = await ask('Bank name');
   const iban = await ask('IBAN');
   const bic = await ask('BIC/SWIFT');
@@ -79,7 +80,8 @@ async function main() {
   const taxNumber = await ask('Tax number');
   const vatId = await ask('VAT ID (optional, for EU businesses)');
 
-  // Build provider object
+  // Build provider object with banks array and legacy bank for backward compat
+  const bankEntry = { name: bankName, iban, bic };
   const provider: Record<string, unknown> = {
     name,
     address: {
@@ -89,11 +91,8 @@ async function main() {
     },
     phone,
     email,
-    bank: {
-      name: bankName,
-      iban,
-      bic
-    },
+    bank: bankEntry,
+    banks: [{ label: bankLabel, ...bankEntry }],
     taxNumber,
     ...(vatId && { vatId })
   };

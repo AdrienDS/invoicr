@@ -44,17 +44,41 @@ export const bankSchema = z.object({
   bic: z.string().min(1, 'BIC is required')
 });
 
+export const labeledBankSchema = bankSchema.extend({
+  label: z.string().min(1, 'Bank label is required')
+});
+
 export const providerSchema = z.object({
   name: z.string().min(1, 'Provider name is required'),
   address: addressSchema,
   phone: z.string().min(1, 'Phone is required'),
   email: z.string().email('Invalid email address'),
-  bank: bankSchema,
+  bank: bankSchema.optional(),
+  banks: z.array(labeledBankSchema).min(1).optional(),
   taxNumber: z.string().min(1, 'Tax number is required'),
   vatId: z.string().optional(),
   logoPath: z.string().optional(),
   // E-invoice support (v2.0.0+)
   countryCode: countryCodeSchema.optional()
+}).superRefine((data, ctx) => {
+  if (!data.bank && (!data.banks || data.banks.length === 0)) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'At least one of "bank" or "banks" must be provided',
+      path: ['bank']
+    });
+  }
+  if (data.banks && data.banks.length > 1) {
+    const labels = data.banks.map(b => b.label);
+    const duplicates = labels.filter((l, i) => labels.indexOf(l) !== i);
+    if (duplicates.length > 0) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: `Duplicate bank labels: ${[...new Set(duplicates)].join(', ')}`,
+        path: ['banks']
+      });
+    }
+  }
 });
 
 export type ProviderInput = z.input<typeof providerSchema>;

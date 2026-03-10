@@ -12,6 +12,7 @@ import { saveToHistory } from './history.js';
 import { canGenerateEInvoice, getDefaultFormat, validateForEInvoice, generateEInvoice, saveEInvoice } from './einvoice/index.js';
 import { getLastInvoice } from './lib/history-manager.js';
 import { loadTranslations } from './api/helpers/translations.js';
+import { resolveBankDetails } from './lib/bank-utils.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -251,7 +252,7 @@ const emailBaseDescription = getServiceDescription(client.service.description, e
 const emailServiceDescription = `${emailBaseDescription}, ${monthName}`;
 
 // Get bank details (client-specific or default)
-const bankDetails = client.bank || provider.bank;
+const bankDetails = resolveBankDetails(client, provider)!;
 
 // Build context
 const ctx: InvoiceContext = {

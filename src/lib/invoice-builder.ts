@@ -4,6 +4,7 @@
  */
 import { Provider, Client, Translations, InvoiceContext, ResolvedLineItem } from '../types.js';
 import { formatDate, getServiceDescription, calculateDueDate } from '../utils.js';
+import { resolveBankDetails } from './bank-utils.js';
 
 export interface BuildInvoiceOptions {
   quantity: number;
@@ -140,7 +141,7 @@ export function buildInvoiceContext(
   const emailServiceDescription = buildServiceDescription(client, monthName, emailLang);
 
   // Get bank details
-  const bankDetails = client.bank || provider.bank;
+  const bankDetails = resolveBankDetails(client, provider)!;
   const billingType = client.service.billingType || 'daily';
   const currency = client.service.currency || 'EUR';
   const rate = client.service.rate || 0;

@@ -69,10 +69,18 @@ export {
   type InvoiceHistory
 } from './history-manager.js';
 
+// Bank Account Resolution
+export {
+  getProviderBanks,
+  resolveBankDetails
+} from './bank-utils.js';
+
 // Re-export commonly used types and utilities
 export type {
   Provider,
   Client,
+  BankDetails,
+  LabeledBankDetails,
   Translations,
   InvoiceContext,
   ResolvedLineItem,

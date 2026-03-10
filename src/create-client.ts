@@ -104,14 +104,53 @@ async function main() {
     template.paymentTermsDays?.toString() || '');
   const paymentTermsDays = paymentTermsStr ? parseInt(paymentTermsStr) : null;
 
-  // Bank (optional override)
-  console.log('\nBank Details (leave empty to use provider default):');
-  const bankName = await ask('Bank name', template.bank?.name || '');
+  // Bank selection
+  // Try to load provider to show available bank accounts
+  let bankLabel: string | undefined = undefined;
   let bank = undefined;
-  if (bankName) {
-    const iban = await ask('IBAN', template.bank?.iban || '');
-    const bic = await ask('BIC', template.bank?.bic || '');
-    bank = { name: bankName, iban, bic };
+
+  const providerPath = path.join(cwd, 'provider.json');
+  let providerBanks: Array<{ label: string; name: string; iban: string }> = [];
+  if (fs.existsSync(providerPath)) {
+    try {
+      const providerData = JSON.parse(fs.readFileSync(providerPath, 'utf8'));
+      if (providerData.banks && providerData.banks.length > 0) {
+        providerBanks = providerData.banks;
+      } else if (providerData.bank) {
+        providerBanks = [{ label: providerData.bank.name, name: providerData.bank.name, iban: providerData.bank.iban }];
+      }
+    } catch {
+      // ignore parse errors
+    }
+  }
+
+  if (providerBanks.length > 1) {
+    console.log('\nProvider Bank Accounts:');
+    providerBanks.forEach((b, i) => {
+      console.log(`  ${i + 1}. ${b.label} (${b.name}, ${b.iban})`);
+    });
+    console.log(`  ${providerBanks.length + 1}. Custom bank details`);
+    const bankChoice = await ask(`Select bank account (1-${providerBanks.length + 1})`, '1');
+    const choiceNum = parseInt(bankChoice);
+    if (choiceNum >= 1 && choiceNum <= providerBanks.length) {
+      bankLabel = providerBanks[choiceNum - 1].label;
+    } else {
+      console.log('\nCustom Bank Details:');
+      const bankName = await ask('Bank name', template.bank?.name || '');
+      if (bankName) {
+        const iban = await ask('IBAN', template.bank?.iban || '');
+        const bic = await ask('BIC', template.bank?.bic || '');
+        bank = { name: bankName, iban, bic };
+      }
+    }
+  } else {
+    console.log('\nBank Details (leave empty to use provider default):');
+    const bankName = await ask('Bank name', template.bank?.name || '');
+    if (bankName) {
+      const iban = await ask('IBAN', template.bank?.iban || '');
+      const bic = await ask('BIC', template.bank?.bic || '');
+      bank = { name: bankName, iban, bic };
+    }
   }
 
   // Email
@@ -148,6 +187,9 @@ async function main() {
   }
   if (bank) {
     client.bank = bank;
+  }
+  if (bankLabel) {
+    client.bankLabel = bankLabel;
   }
 
   // Create folder and save

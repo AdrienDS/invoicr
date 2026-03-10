@@ -1,6 +1,7 @@
 export {
   addressSchema,
   bankSchema,
+  labeledBankSchema,
   providerSchema,
   type ProviderInput,
   type Provider

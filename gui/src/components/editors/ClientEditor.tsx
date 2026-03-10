@@ -11,6 +11,7 @@ import {
   InvoiceSettingsSection,
   TemplateSection,
   ServiceSection,
+  BankSection,
   EInvoiceSection,
   ClientEmailSection,
 } from './client-editor';
@@ -224,6 +225,14 @@ export function ClientEditor({ persona, clientName, onBack, onSaved }: ClientEdi
         />
 
         <ServiceSection register={register} errors={errors} />
+
+        <BankSection
+          register={register}
+          errors={errors}
+          watch={watch}
+          setValue={setValue}
+          providerBanks={provider?.banks || []}
+        />
 
         {countriesMatch && eInvoiceFormats.length > 0 && (
           <EInvoiceSection
