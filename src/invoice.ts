@@ -342,7 +342,7 @@ if (isDryRun) {
 }
 
 // Generate DOCX and PDF
-generateInvoiceFromTemplate(ctx, effectiveTemplateName).then(buffer => {
+generateInvoiceFromTemplate(ctx, effectiveTemplateName, cwd).then(buffer => {
   fs.writeFileSync(docxPath, buffer);
   console.log(`DOCX created: ${docxPath}`);
 
