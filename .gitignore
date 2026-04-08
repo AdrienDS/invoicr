@@ -20,6 +20,9 @@ clients/*/
 # Keep clients directory structure
 !clients/.keep
 
+# Private Claude instructions
+CLAUDE.md
+
 # IDE
 .idea/
 .vscode/
