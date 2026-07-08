@@ -49,6 +49,7 @@ if (positionalArgs.length < requiredArgs) {
   console.error('Options:');
   console.error('  --previous-amount   Use amount from last invoice (omit quantity)');
   console.error('  --month=MM-YYYY     Specify billing month (default: previous month)');
+  console.error('  --period=TEXT       Override the displayed service period (e.g. half-month billing)');
   console.error('  --template=NAME     Use specific template (default, minimal, detailed, or custom)');
   console.error('  --email             Create email draft with invoice attached');
   console.error('  --test              Send test email to provider instead of client');
@@ -66,12 +67,15 @@ if (positionalArgs.length < requiredArgs) {
   console.error('  invoicr acme-hourly 40 --einvoice');
   console.error('  invoicr acme-daily 5 --einvoice=xrechnung');
   console.error('  invoicr acme-daily 5 --template=minimal');
+  console.error('  invoicr acme 18 --period="June 16 - 30"');
   process.exit(1);
 }
 
 const clientFolder = positionalArgs[0];
 let quantity = positionalArgs[1] ? parseFloat(positionalArgs[1]) : 0;
 const monthArg = args.find(a => a.startsWith('--month='));
+const periodArg = args.find(a => a.startsWith('--period='));
+const periodOverride = periodArg?.replace('--period=', '');
 const shouldEmail = args.includes('--email');
 const isTestMode = args.includes('--test');
 
@@ -180,7 +184,7 @@ if (monthArg) {
 const invoiceDateObj = new Date();
 const invoiceDate = formatDate(invoiceDateObj, lang);
 const lastOfMonth = new Date(billingMonth.getFullYear(), billingMonth.getMonth() + 1, 0);
-const monthName = billingMonth.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+let monthName = billingMonth.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
 
 // Calculate due date if payment terms are set
 let dueDate: string | undefined;
@@ -194,6 +198,13 @@ if (lang === 'de') {
   servicePeriod = billingMonth.toLocaleDateString('de-DE', { month: 'short', year: 'numeric' });
 } else {
   servicePeriod = monthName;
+}
+
+// --period overrides the displayed service period and month label
+// (e.g. half-month billing), leaving billingMonth/invoiceNumber/due-date untouched
+if (periodOverride) {
+  monthName = periodOverride;
+  servicePeriod = periodOverride;
 }
 
 // Generate invoice number
@@ -296,7 +307,7 @@ async function runInvoice() {
   totalAmount = ctx.totalAmount;
 
   // Generate output filenames
-  const monthStr = billingMonth.toLocaleDateString('en-US', { month: 'long', year: 'numeric' }).replace(' ', '_');
+  const monthStr = monthName.replace(/[/\\:*?"<>|]/g, '').replace(/\s+/g, '_');
   const baseFilename = `${translations.filePrefix}_${invoiceNumber}_${monthStr}`;
   const docxPath = path.join(outputDir, `${baseFilename}.docx`);
   const pdfPath = path.join(outputDir, `${baseFilename}.pdf`);

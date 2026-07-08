@@ -280,6 +280,33 @@ describe('invoice-builder', () => {
 
       expect(result.bankDetails.name).toBe('Client Bank');
     });
+
+    it('should override servicePeriod and monthName when period is provided', () => {
+      const billingMonth = new Date(2026, 5, 15); // June 2026
+      const result = buildInvoiceContext(
+        validProvider,
+        validClient,
+        translations,
+        { quantity: 40, billingMonth, period: 'June 16 - 30' }
+      );
+
+      expect(result.servicePeriod).toBe('June 16 - 30');
+      expect(result.monthName).toBe('June 16 - 30');
+      expect(result.serviceDescription).toContain('June 16 - 30');
+    });
+
+    it('should use the calculated servicePeriod/monthName when period is not provided', () => {
+      const billingMonth = new Date(2026, 5, 15); // June 2026
+      const result = buildInvoiceContext(
+        validProvider,
+        validClient,
+        translations,
+        { quantity: 40, billingMonth }
+      );
+
+      expect(result.servicePeriod).toBe('June 2026');
+      expect(result.monthName).toBe('June 2026');
+    });
   });
 
   describe('applyCurrencyConversion', () => {

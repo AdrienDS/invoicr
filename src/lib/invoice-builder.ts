@@ -11,6 +11,8 @@ export interface BuildInvoiceOptions {
   quantity: number;
   billingMonth?: Date;
   lang?: 'de' | 'en';
+  /** Override the displayed service period (e.g. "June 16 - 30") for half-month/custom billing periods */
+  period?: string;
 }
 
 /**
@@ -114,12 +116,14 @@ export function buildInvoiceContext(
   translations: Translations,
   options: BuildInvoiceOptions
 ): InvoiceContext {
-  const { quantity, billingMonth = getDefaultBillingMonth(), lang = client.language || 'de' } = options;
+  const { quantity, billingMonth = getDefaultBillingMonth(), lang = client.language || 'de', period } = options;
 
   // Calculate dates
   const invoiceDateObj = new Date();
   const invoiceDate = formatDate(invoiceDateObj, lang);
-  const { servicePeriod, monthName } = getServicePeriod(billingMonth, lang);
+  const computed = getServicePeriod(billingMonth, lang);
+  const servicePeriod = period || computed.servicePeriod;
+  const monthName = period || computed.monthName;
 
   // Calculate due date if payment terms are set
   let dueDate: string | undefined;

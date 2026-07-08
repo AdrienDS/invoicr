@@ -49,7 +49,7 @@ export async function generateDocx(
   const buffer = await generateInvoiceFromTemplate(ctx, templateName, opts.personaDir);
 
   // Generate filename
-  const monthStr = ctx.monthName.replace(' ', '_');
+  const monthStr = ctx.monthName.replace(/[/\\:*?"<>|]/g, '').replace(/\s+/g, '_');
   const baseFilename = `${ctx.translations.filePrefix}_${ctx.invoiceNumber}_${monthStr}`;
   const docxPath = path.join(outputDir, `${baseFilename}.docx`);
 
@@ -150,7 +150,7 @@ export function generateOutputPaths(
   ctx: InvoiceContext,
   outputDir: string
 ): { docxPath: string; pdfPath: string } {
-  const monthStr = ctx.monthName.replace(' ', '_');
+  const monthStr = ctx.monthName.replace(/[/\\:*?"<>|]/g, '').replace(/\s+/g, '_');
   const baseFilename = `${ctx.translations.filePrefix}_${ctx.invoiceNumber}_${monthStr}`;
 
   return {
