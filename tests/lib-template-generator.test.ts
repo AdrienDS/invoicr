@@ -85,5 +85,13 @@ describe('template-generator', () => {
 
       expect(data.conversionNote).toBe(ctx.conversionNote);
     });
+
+    it('does not append the service period to line item descriptions', () => {
+      const ctx = buildInvoiceContext(provider, baseClient, translations, { quantity: 40 });
+      const data = contextToTemplateData(ctx);
+
+      expect(data.lineItems[0].description).toBe('Consulting Services');
+      expect(data.lineItems[0].description).not.toContain(ctx.monthName);
+    });
   });
 });

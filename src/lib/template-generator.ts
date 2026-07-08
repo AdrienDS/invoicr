@@ -200,7 +200,7 @@ export function contextToTemplateData(ctx: InvoiceContext): TemplateData {
     servicePeriod: ctx.servicePeriod,
     projectRef: ctx.client.projectReference || '',
     lineItems: ctx.lineItems.map(item => ({
-      description: `${item.description}, ${ctx.monthName}`,
+      description: item.description,
       quantity: item.quantity.toString(),
       rate: formatCurrency(item.rate, currency, lang),
       total: formatCurrency(item.total, currency, lang),
