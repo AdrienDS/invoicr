@@ -217,6 +217,24 @@ describe('validateClient', () => {
     expect(result.legalText).toBe('Late payments incur a 5% fee per month overdue.');
   });
 
+  it('should accept optional invoiceCurrency and includeConversion on service', () => {
+    const clientWithConversion = {
+      ...validClient,
+      service: { ...validClient.service, currency: 'USD', invoiceCurrency: 'EUR', includeConversion: true }
+    };
+    const result = validateClient(clientWithConversion);
+    expect(result.service.invoiceCurrency).toBe('EUR');
+    expect(result.service.includeConversion).toBe(true);
+  });
+
+  it('should throw on invalid invoiceCurrency', () => {
+    const invalid = {
+      ...validClient,
+      service: { ...validClient.service, invoiceCurrency: 'GBP' }
+    };
+    expect(() => validateClient(invalid)).toThrow('Invalid client config');
+  });
+
   it('should throw on invalid language', () => {
     const invalid = { ...validClient, language: 'fr' };
     expect(() => validateClient(invalid)).toThrow('Invalid client config');
