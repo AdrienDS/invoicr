@@ -2,7 +2,7 @@ export function formatDate(date: Date, lang: string): string {
   if (lang === 'de') {
     return date.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' });
   }
-  return date.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+  return date.toLocaleDateString('en-US', { day: 'numeric', month: 'long', year: 'numeric' });
 }
 
 export function formatCurrency(amount: number, currency: string, lang: string): string {
