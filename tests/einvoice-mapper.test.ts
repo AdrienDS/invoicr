@@ -170,6 +170,14 @@ describe('generateEInvoiceFilename', () => {
     const filename = generateEInvoiceFilename(ctx, 'xrechnung', 'xml');
     expect(filename).toBe('Rechnung_TC_001-2024_November_2024_xrechnung.xml');
   });
+
+  it('should use filenameSuffix instead of monthName when provided', () => {
+    const ctx = createValidContext();
+    ctx.monthName = 'June 16 - 30';
+    ctx.filenameSuffix = 'June_16-30_2026';
+    const filename = generateEInvoiceFilename(ctx, 'xrechnung', 'xml');
+    expect(filename).toBe('Rechnung_TC-001_June_16-30_2026_xrechnung.xml');
+  });
 });
 
 describe('mapInvoiceContext', () => {

@@ -4,7 +4,7 @@ import * as path from 'path';
 import { execSync } from 'child_process';
 import { fileURLToPath } from 'url';
 import { Provider, Client, Translations, InvoiceContext, ResolvedLineItem, EInvoiceFormat, CountryCode } from './types.js';
-import { formatDate, formatCurrency, getServiceDescription, calculateDueDate } from './utils.js';
+import { formatDate, formatCurrency, getServiceDescription, calculateDueDate, sanitizeFilenamePart } from './utils.js';
 import { generateInvoiceFromTemplate } from './lib/template-generator.js';
 import { applyCurrencyConversion } from './lib/invoice-builder.js';
 import { createEmail } from './email.js';
@@ -50,6 +50,8 @@ if (positionalArgs.length < requiredArgs) {
   console.error('  --previous-amount   Use amount from last invoice (omit quantity)');
   console.error('  --month=MM-YYYY     Specify billing month (default: previous month)');
   console.error('  --period=TEXT       Override the displayed service period (e.g. half-month billing)');
+  console.error('  --filename-suffix=TEXT  Override the month/period fragment in the output filename');
+  console.error('                      (default: sanitized from --period or the billing month)');
   console.error('  --template=NAME     Use specific template (default, minimal, detailed, or custom)');
   console.error('  --email             Create email draft with invoice attached');
   console.error('  --test              Send test email to provider instead of client');
@@ -68,6 +70,7 @@ if (positionalArgs.length < requiredArgs) {
   console.error('  invoicr acme-daily 5 --einvoice=xrechnung');
   console.error('  invoicr acme-daily 5 --template=minimal');
   console.error('  invoicr acme 18 --period="June 16 - 30"');
+  console.error('  invoicr acme 18 --period="June 16 - 30" --filename-suffix="June_16-30_2026"');
   process.exit(1);
 }
 
@@ -76,6 +79,8 @@ let quantity = positionalArgs[1] ? parseFloat(positionalArgs[1]) : 0;
 const monthArg = args.find(a => a.startsWith('--month='));
 const periodArg = args.find(a => a.startsWith('--period='));
 const periodOverride = periodArg?.replace('--period=', '');
+const filenameSuffixArg = args.find(a => a.startsWith('--filename-suffix='));
+const filenameSuffixOverride = filenameSuffixArg?.replace('--filename-suffix=', '');
 const shouldEmail = args.includes('--email');
 const isTestMode = args.includes('--test');
 
@@ -276,6 +281,7 @@ let ctx: InvoiceContext = {
   dueDate,
   servicePeriod,
   monthName,
+  filenameSuffix: filenameSuffixOverride,
   totalAmount,
   quantity,
   rate,
@@ -307,7 +313,7 @@ async function runInvoice() {
   totalAmount = ctx.totalAmount;
 
   // Generate output filenames
-  const monthStr = monthName.replace(/[/\\:*?"<>|]/g, '').replace(/\s+/g, '_');
+  const monthStr = filenameSuffixOverride ? sanitizeFilenamePart(filenameSuffixOverride) : sanitizeFilenamePart(monthName);
   const baseFilename = `${translations.filePrefix}_${invoiceNumber}_${monthStr}`;
   const docxPath = path.join(outputDir, `${baseFilename}.docx`);
   const pdfPath = path.join(outputDir, `${baseFilename}.pdf`);

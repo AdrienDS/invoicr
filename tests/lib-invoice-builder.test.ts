@@ -307,6 +307,23 @@ describe('invoice-builder', () => {
       expect(result.servicePeriod).toBe('June 2026');
       expect(result.monthName).toBe('June 2026');
     });
+
+    it('should leave filenameSuffix undefined when not provided', () => {
+      const result = buildInvoiceContext(validProvider, validClient, translations, { quantity: 40 });
+      expect(result.filenameSuffix).toBeUndefined();
+    });
+
+    it('should pass through filenameSuffix when provided', () => {
+      const result = buildInvoiceContext(
+        validProvider,
+        validClient,
+        translations,
+        { quantity: 40, period: 'June 16 - 30', filenameSuffix: 'June_16-30_2026' }
+      );
+
+      expect(result.servicePeriod).toBe('June 16 - 30');
+      expect(result.filenameSuffix).toBe('June_16-30_2026');
+    });
   });
 
   describe('applyCurrencyConversion', () => {

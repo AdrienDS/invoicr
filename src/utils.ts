@@ -53,3 +53,12 @@ export function formatDueDate(date: Date, lang: string): string {
   return formatDate(date, lang);
 }
 
+/**
+ * Sanitize free text (e.g. a month name or custom billing period) for use as
+ * part of a filename: strip filesystem-unsafe characters and collapse all
+ * whitespace to underscores.
+ */
+export function sanitizeFilenamePart(text: string): string {
+  return text.replace(/[/\\:*?"<>|]/g, '').replace(/\s+/g, '_');
+}
+

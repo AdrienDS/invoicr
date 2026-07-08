@@ -1,4 +1,5 @@
 import type { InvoiceContext, EInvoiceFormat, CountryCode, ResolvedLineItem } from '../types.js';
+import { sanitizeFilenamePart } from '../utils.js';
 
 /**
  * E-Invoice data structure based on EN16931 Business Terms
@@ -248,6 +249,6 @@ export function generateEInvoiceFilename(
   fileExtension: string
 ): string {
   const sanitizedInvoiceNumber = ctx.invoiceNumber.replace(/[^a-zA-Z0-9-]/g, '_');
-  const sanitizedMonth = ctx.monthName.replace(/\s+/g, '_');
+  const sanitizedMonth = sanitizeFilenamePart(ctx.filenameSuffix || ctx.monthName);
   return `${ctx.translations.filePrefix}_${sanitizedInvoiceNumber}_${sanitizedMonth}_${format}.${fileExtension}`;
 }

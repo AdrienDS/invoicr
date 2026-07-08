@@ -286,6 +286,9 @@ export interface InvoiceContext {
   dueDate?: string;  // Calculated due date (if paymentTermsDays set)
   servicePeriod: string;
   monthName: string;
+  // Override for the month/period fragment used in output filenames, independent
+  // of servicePeriod/monthName's display formatting (e.g. for custom periods)
+  filenameSuffix?: string;
   totalAmount: number;
   quantity: number;
   rate: number;
