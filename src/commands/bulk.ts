@@ -282,10 +282,12 @@ if (useBatchEmail && generatedInvoices.length > 0) {
         billingMonth: new Date()
       });
 
-      // Override with actual invoice data
+      // Override with actual invoice data (may have been billed in a different
+      // currency than the client's current config, e.g. after conversion)
       context.invoiceNumber = invoice.invoiceNumber;
       context.monthName = invoice.monthName;
       context.totalAmount = invoice.totalAmount;
+      context.currency = (invoice.currency as 'EUR' | 'USD') || context.currency;
 
       try {
         createEmail(context, [invoice.pdfPath], isTestMode);
