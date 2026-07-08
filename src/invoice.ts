@@ -6,6 +6,7 @@ import { fileURLToPath } from 'url';
 import { Provider, Client, Translations, InvoiceContext, ResolvedLineItem, EInvoiceFormat, CountryCode } from './types.js';
 import { formatDate, formatCurrency, getServiceDescription, calculateDueDate } from './utils.js';
 import { generateInvoiceFromTemplate } from './lib/template-generator.js';
+import { applyCurrencyConversion } from './lib/invoice-builder.js';
 import { createEmail } from './email.js';
 import { validateProvider, validateClient } from './schemas/index.js';
 import { saveToHistory } from './history.js';
@@ -200,8 +201,8 @@ const invoiceNumber = `${client.invoicePrefix}-${client.nextInvoiceNumber}`;
 
 // Calculate totals
 const billingType = client.service.billingType || 'daily';
-const currency = client.service.currency || 'EUR';
-const rate = client.service.rate || client.service.dailyRate || 0;
+let currency = client.service.currency || 'EUR';
+let rate = client.service.rate || client.service.dailyRate || 0;
 const taxRate = client.taxRate || 0;
 
 // Build line items (from config or from service + CLI quantity)
@@ -238,9 +239,9 @@ if (client.lineItems && client.lineItems.length > 0) {
 }
 
 // Calculate subtotal, tax, and total
-const subtotal = lineItems.reduce((sum, item) => sum + item.total, 0);
-const taxAmount = subtotal * taxRate;
-const totalAmount = subtotal + taxAmount;
+let subtotal = lineItems.reduce((sum, item) => sum + item.total, 0);
+let taxAmount = subtotal * taxRate;
+let totalAmount = subtotal + taxAmount;
 
 // Build service description (append month for all billing types)
 const baseDescription = getServiceDescription(client.service.description, lang);
@@ -255,7 +256,7 @@ const emailServiceDescription = `${emailBaseDescription}, ${monthName}`;
 const bankDetails = resolveBankDetails(client, provider)!;
 
 // Build context
-const ctx: InvoiceContext = {
+let ctx: InvoiceContext = {
   provider,
   client,
   translations,
@@ -279,155 +280,171 @@ const ctx: InvoiceContext = {
   taxRate
 };
 
-// Generate output filenames
-const monthStr = billingMonth.toLocaleDateString('en-US', { month: 'long', year: 'numeric' }).replace(' ', '_');
-const baseFilename = `${translations.filePrefix}_${invoiceNumber}_${monthStr}`;
-const docxPath = path.join(outputDir, `${baseFilename}.docx`);
-const pdfPath = path.join(outputDir, `${baseFilename}.pdf`);
-
-// Determine template name for display (CLI override takes precedence)
-const effectiveTemplateName = templateOverride || client.templateName || 'default';
-
-// Dry run - show summary and exit
-if (isDryRun) {
-  console.log('=== DRY RUN - Invoice Preview ===\n');
-  console.log(`Client:         ${client.name}`);
-  console.log(`Invoice Number: ${invoiceNumber}`);
-  console.log(`Invoice Date:   ${invoiceDate}`);
-  if (dueDate) {
-    console.log(`Due Date:       ${dueDate}`);
-  }
-  console.log(`Service Period: ${servicePeriod}`);
-  console.log(`Template:       ${effectiveTemplateName}`);
-  console.log('');
-
-  // Show line items
-  console.log('Line Items:');
-  lineItems.forEach((item, index) => {
-    const unitLabel = item.billingType === 'hourly' ? 'hour(s)' : item.billingType === 'daily' ? 'day(s)' : '';
-    if (item.billingType === 'fixed') {
-      console.log(`  ${index + 1}. ${item.description}: ${formatCurrency(item.total, currency, lang)}`);
-    } else {
-      console.log(`  ${index + 1}. ${item.description}: ${item.quantity} ${unitLabel} × ${formatCurrency(item.rate, currency, lang)} = ${formatCurrency(item.total, currency, lang)}`);
-    }
-  });
-  console.log('');
-
-  // Show totals
-  if (taxRate > 0) {
-    console.log(`Subtotal:       ${formatCurrency(subtotal, currency, lang)}`);
-    console.log(`Tax (${(taxRate * 100).toFixed(0)}%):       ${formatCurrency(taxAmount, currency, lang)}`);
-  }
-  console.log(`Total Amount:   ${formatCurrency(totalAmount, currency, lang)}`);
-  console.log('');
-  console.log(`Output DOCX:    ${docxPath}`);
-  console.log(`Output PDF:     ${pdfPath}`);
-  if (shouldEmail) {
-    console.log(`Email:          Would send to ${client.email?.to?.join(', ') || 'N/A'}`);
-  }
-  if (shouldGenerateEInvoice) {
-    const providerCC = provider.countryCode as CountryCode | undefined;
-    const clientCC = client.countryCode as CountryCode | undefined;
-    if (canGenerateEInvoice(providerCC, clientCC)) {
-      const formatInfo = getDefaultFormat(providerCC!, requestedEInvoiceFormat);
-      if (formatInfo) {
-        console.log(`E-Invoice:      Would generate ${formatInfo.format.toUpperCase()} (${formatInfo.description})`);
-      }
-    } else {
-      console.log(`E-Invoice:      Not available (country mismatch or missing countryCode)`);
-    }
-  }
-  console.log('\n=== No files were generated ===');
-  process.exit(0);
-}
-
-// Generate DOCX and PDF
-generateInvoiceFromTemplate(ctx, effectiveTemplateName, cwd).then(buffer => {
-  fs.writeFileSync(docxPath, buffer);
-  console.log(`DOCX created: ${docxPath}`);
-
-  // Convert to PDF using LibreOffice
-  try {
-    execSync(`soffice --headless --convert-to pdf --outdir "${outputDir}" "${docxPath}"`, { stdio: 'inherit' });
-    console.log(`PDF created: ${pdfPath}`);
-  } catch (err) {
-    console.error('PDF conversion failed. Make sure LibreOffice is installed.');
-    console.error('Install with: brew install --cask libreoffice');
-  }
-
-  // Save to history
-  // For fixed billing type, store qty=1 and rate=totalAmount for cleaner display
-  const historyQuantity = billingType === 'fixed' ? 1 : quantity;
-  const historyRate = billingType === 'fixed' ? totalAmount : rate;
-  saveToHistory(outputDir, {
-    invoiceNumber,
-    date: invoiceDateObj.toISOString().split('T')[0],
-    month: monthName,
-    quantity: historyQuantity,
-    rate: historyRate,
-    totalAmount,
-    currency,
-    pdfPath
-  });
-
-  // Update next invoice number
-  client.nextInvoiceNumber++;
-  fs.writeFileSync(clientPath, JSON.stringify(client, null, 2));
-  console.log(`Next invoice number updated to: ${client.nextInvoiceNumber}`);
-
-  console.log(`\nInvoice ${invoiceNumber} generated successfully!`);
-  const unitLabel = billingType === 'hourly' ? 'hour(s)' : billingType === 'daily' ? 'day(s)' : '';
-  console.log(`Total: ${formatCurrency(totalAmount, currency, lang)} for ${quantity} ${unitLabel}`);
-
-  // Create email if requested
-  if (shouldEmail) {
-    createEmail(ctx, [pdfPath], isTestMode);
-  }
-
-  // Generate e-invoice if requested
-  if (shouldGenerateEInvoice) {
-    const providerCC = provider.countryCode as CountryCode | undefined;
-    const clientCC = client.countryCode as CountryCode | undefined;
-
-    if (!canGenerateEInvoice(providerCC, clientCC)) {
-      if (!providerCC || !clientCC) {
-        console.error('\nE-invoice generation skipped: Both provider and client must have countryCode set.');
-        console.error('Add "countryCode": "DE" (or appropriate country) to provider.json and client config.');
-      } else if (providerCC !== clientCC) {
-        console.error(`\nE-invoice generation skipped: Provider (${providerCC}) and client (${clientCC}) must be in the same country.`);
-      }
-    } else {
-      // Get format info
-      const formatInfo = getDefaultFormat(providerCC!, requestedEInvoiceFormat);
-      if (!formatInfo) {
-        console.error(`\nE-invoice generation failed: No format available for country ${providerCC}`);
-      } else {
-        // Validate before generation
-        const validation = validateForEInvoice(ctx, formatInfo.format, providerCC!, clientCC!);
-
-        if (validation.warnings.length > 0) {
-          console.log('\nE-invoice warnings:');
-          validation.warnings.forEach(w => console.log(`  ⚠ ${w}`));
-        }
-
-        if (!validation.valid) {
-          console.error('\nE-invoice generation failed - validation errors:');
-          validation.errors.forEach(e => console.error(`  ✗ ${e}`));
-        } else {
-          // Generate e-invoice
-          console.log(`\nGenerating ${formatInfo.format.toUpperCase()} e-invoice...`);
-
-          generateEInvoice(ctx, providerCC!, clientCC!, {
-            format: requestedEInvoiceFormat
-          }).then(async result => {
-            // Save e-invoice file
-            const savedPath = await saveEInvoice(result, outputDir);
-            console.log(`E-invoice created: ${savedPath}`);
-          }).catch(err => {
-            console.error(`E-invoice generation error: ${err.message}`);
-          });
-        }
-      }
-    }
-  }
+runInvoice().catch(err => {
+  console.error('Error generating invoice:', err instanceof Error ? err.message : err);
+  process.exit(1);
 });
+
+async function runInvoice() {
+  // Apply currency conversion (if configured) before displaying or generating anything
+  ctx = await applyCurrencyConversion(ctx);
+  currency = ctx.currency;
+  rate = ctx.rate;
+  lineItems = ctx.lineItems;
+  subtotal = ctx.subtotal;
+  taxAmount = ctx.taxAmount;
+  totalAmount = ctx.totalAmount;
+
+  // Generate output filenames
+  const monthStr = billingMonth.toLocaleDateString('en-US', { month: 'long', year: 'numeric' }).replace(' ', '_');
+  const baseFilename = `${translations.filePrefix}_${invoiceNumber}_${monthStr}`;
+  const docxPath = path.join(outputDir, `${baseFilename}.docx`);
+  const pdfPath = path.join(outputDir, `${baseFilename}.pdf`);
+
+  // Determine template name for display (CLI override takes precedence)
+  const effectiveTemplateName = templateOverride || client.templateName || 'default';
+
+  // Dry run - show summary and exit
+  if (isDryRun) {
+    console.log('=== DRY RUN - Invoice Preview ===\n');
+    console.log(`Client:         ${client.name}`);
+    console.log(`Invoice Number: ${invoiceNumber}`);
+    console.log(`Invoice Date:   ${invoiceDate}`);
+    if (dueDate) {
+      console.log(`Due Date:       ${dueDate}`);
+    }
+    console.log(`Service Period: ${servicePeriod}`);
+    console.log(`Template:       ${effectiveTemplateName}`);
+    console.log('');
+
+    // Show line items
+    console.log('Line Items:');
+    lineItems.forEach((item, index) => {
+      const unitLabel = item.billingType === 'hourly' ? 'hour(s)' : item.billingType === 'daily' ? 'day(s)' : '';
+      if (item.billingType === 'fixed') {
+        console.log(`  ${index + 1}. ${item.description}: ${formatCurrency(item.total, currency, lang)}`);
+      } else {
+        console.log(`  ${index + 1}. ${item.description}: ${item.quantity} ${unitLabel} × ${formatCurrency(item.rate, currency, lang)} = ${formatCurrency(item.total, currency, lang)}`);
+      }
+    });
+    console.log('');
+
+    // Show totals
+    if (taxRate > 0) {
+      console.log(`Subtotal:       ${formatCurrency(subtotal, currency, lang)}`);
+      console.log(`Tax (${(taxRate * 100).toFixed(0)}%):       ${formatCurrency(taxAmount, currency, lang)}`);
+    }
+    console.log(`Total Amount:   ${formatCurrency(totalAmount, currency, lang)}`);
+    console.log('');
+    console.log(`Output DOCX:    ${docxPath}`);
+    console.log(`Output PDF:     ${pdfPath}`);
+    if (shouldEmail) {
+      console.log(`Email:          Would send to ${client.email?.to?.join(', ') || 'N/A'}`);
+    }
+    if (shouldGenerateEInvoice) {
+      const providerCC = provider.countryCode as CountryCode | undefined;
+      const clientCC = client.countryCode as CountryCode | undefined;
+      if (canGenerateEInvoice(providerCC, clientCC)) {
+        const formatInfo = getDefaultFormat(providerCC!, requestedEInvoiceFormat);
+        if (formatInfo) {
+          console.log(`E-Invoice:      Would generate ${formatInfo.format.toUpperCase()} (${formatInfo.description})`);
+        }
+      } else {
+        console.log(`E-Invoice:      Not available (country mismatch or missing countryCode)`);
+      }
+    }
+    console.log('\n=== No files were generated ===');
+    process.exit(0);
+  }
+
+  // Generate DOCX and PDF
+  generateInvoiceFromTemplate(ctx, effectiveTemplateName, cwd).then(buffer => {
+    fs.writeFileSync(docxPath, buffer);
+    console.log(`DOCX created: ${docxPath}`);
+
+    // Convert to PDF using LibreOffice
+    try {
+      execSync(`soffice --headless --convert-to pdf --outdir "${outputDir}" "${docxPath}"`, { stdio: 'inherit' });
+      console.log(`PDF created: ${pdfPath}`);
+    } catch (err) {
+      console.error('PDF conversion failed. Make sure LibreOffice is installed.');
+      console.error('Install with: brew install --cask libreoffice');
+    }
+
+    // Save to history
+    // For fixed billing type, store qty=1 and rate=totalAmount for cleaner display
+    const historyQuantity = billingType === 'fixed' ? 1 : quantity;
+    const historyRate = billingType === 'fixed' ? totalAmount : rate;
+    saveToHistory(outputDir, {
+      invoiceNumber,
+      date: invoiceDateObj.toISOString().split('T')[0],
+      month: monthName,
+      quantity: historyQuantity,
+      rate: historyRate,
+      totalAmount,
+      currency,
+      pdfPath
+    });
+
+    // Update next invoice number
+    client.nextInvoiceNumber++;
+    fs.writeFileSync(clientPath, JSON.stringify(client, null, 2));
+    console.log(`Next invoice number updated to: ${client.nextInvoiceNumber}`);
+
+    console.log(`\nInvoice ${invoiceNumber} generated successfully!`);
+    const unitLabel = billingType === 'hourly' ? 'hour(s)' : billingType === 'daily' ? 'day(s)' : '';
+    console.log(`Total: ${formatCurrency(totalAmount, currency, lang)} for ${quantity} ${unitLabel}`);
+
+    // Create email if requested
+    if (shouldEmail) {
+      createEmail(ctx, [pdfPath], isTestMode);
+    }
+
+    // Generate e-invoice if requested
+    if (shouldGenerateEInvoice) {
+      const providerCC = provider.countryCode as CountryCode | undefined;
+      const clientCC = client.countryCode as CountryCode | undefined;
+
+      if (!canGenerateEInvoice(providerCC, clientCC)) {
+        if (!providerCC || !clientCC) {
+          console.error('\nE-invoice generation skipped: Both provider and client must have countryCode set.');
+          console.error('Add "countryCode": "DE" (or appropriate country) to provider.json and client config.');
+        } else if (providerCC !== clientCC) {
+          console.error(`\nE-invoice generation skipped: Provider (${providerCC}) and client (${clientCC}) must be in the same country.`);
+        }
+      } else {
+        // Get format info
+        const formatInfo = getDefaultFormat(providerCC!, requestedEInvoiceFormat);
+        if (!formatInfo) {
+          console.error(`\nE-invoice generation failed: No format available for country ${providerCC}`);
+        } else {
+          // Validate before generation
+          const validation = validateForEInvoice(ctx, formatInfo.format, providerCC!, clientCC!);
+
+          if (validation.warnings.length > 0) {
+            console.log('\nE-invoice warnings:');
+            validation.warnings.forEach(w => console.log(`  ⚠ ${w}`));
+          }
+
+          if (!validation.valid) {
+            console.error('\nE-invoice generation failed - validation errors:');
+            validation.errors.forEach(e => console.error(`  ✗ ${e}`));
+          } else {
+            // Generate e-invoice
+            console.log(`\nGenerating ${formatInfo.format.toUpperCase()} e-invoice...`);
+
+            generateEInvoice(ctx, providerCC!, clientCC!, {
+              format: requestedEInvoiceFormat
+            }).then(async result => {
+              // Save e-invoice file
+              const savedPath = await saveEInvoice(result, outputDir);
+              console.log(`E-invoice created: ${savedPath}`);
+            }).catch(err => {
+              console.error(`E-invoice generation error: ${err.message}`);
+            });
+          }
+        }
+      }
+    }
+  });
+}

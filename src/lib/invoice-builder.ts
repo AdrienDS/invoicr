@@ -5,6 +5,7 @@
 import { Provider, Client, Translations, InvoiceContext, ResolvedLineItem } from '../types.js';
 import { formatDate, getServiceDescription, calculateDueDate } from '../utils.js';
 import { resolveBankDetails } from './bank-utils.js';
+import { getExchangeRate, formatConversionNote } from './exchange-rate.js';
 
 export interface BuildInvoiceOptions {
   quantity: number;
@@ -168,6 +169,45 @@ export function buildInvoiceContext(
     subtotal,
     taxAmount,
     taxRate
+  };
+}
+
+/**
+ * Convert an invoice context from its billing currency into
+ * `service.invoiceCurrency`, using today's exchange rate, whenever
+ * `invoiceCurrency` differs from `currency`. No-op otherwise.
+ * `service.includeConversion` only controls whether the disclosure line
+ * explaining the rate used is added to the invoice.
+ */
+export async function applyCurrencyConversion(ctx: InvoiceContext): Promise<InvoiceContext> {
+  const { service } = ctx.client;
+  const targetCurrency = service.invoiceCurrency;
+
+  if (!targetCurrency || targetCurrency === ctx.currency) {
+    return ctx;
+  }
+
+  const { rate, date } = await getExchangeRate(ctx.currency, targetCurrency);
+
+  const lineItems = ctx.lineItems.map(item => ({
+    ...item,
+    rate: item.rate * rate,
+    total: item.total * rate
+  }));
+
+  const conversionNote = service.includeConversion
+    ? formatConversionNote(ctx.subtotal, ctx.currency, targetCurrency, rate, date, ctx.lang)
+    : undefined;
+
+  return {
+    ...ctx,
+    lineItems,
+    rate: ctx.rate * rate,
+    subtotal: ctx.subtotal * rate,
+    taxAmount: ctx.taxAmount * rate,
+    totalAmount: ctx.totalAmount * rate,
+    currency: targetCurrency,
+    conversionNote
   };
 }
 

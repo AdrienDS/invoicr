@@ -169,6 +169,12 @@ export interface Service {
   rate?: number;
   dailyRate?: number;
   currency: 'EUR' | 'USD';
+  // Currency conversion: bill in `currency` but display the invoice in `invoiceCurrency`,
+  // converted at the exchange rate for the invoice date. Conversion applies whenever
+  // invoiceCurrency differs from currency; includeConversion only controls whether the
+  // rate disclosure line is printed on the invoice.
+  invoiceCurrency?: 'EUR' | 'USD';
+  includeConversion?: boolean;
 }
 
 export interface Provider {
@@ -294,4 +300,7 @@ export interface InvoiceContext {
   subtotal: number;
   taxAmount: number;
   taxRate: number;
+  // Currency conversion disclosure, set when a conversion was applied and
+  // service.includeConversion requested the disclosure line
+  conversionNote?: string;
 }
