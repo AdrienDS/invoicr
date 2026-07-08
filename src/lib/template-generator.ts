@@ -55,6 +55,10 @@ export interface TemplateData {
   quantityHeader: string;
   /** Whether to show tax-related rows (false when taxRate is 0) */
   showTax: boolean;
+  /** Arbitrary legal/terms text for this client (empty when unset) */
+  legalText: string;
+  /** Currency conversion disclosure (empty when no conversion applied) */
+  conversionNote: string;
   translations: Record<string, string>;
 }
 
@@ -210,6 +214,8 @@ export function contextToTemplateData(ctx: InvoiceContext): TemplateData {
     paymentTerms,
     quantityHeader,
     showTax: ctx.taxRate > 0,
+    legalText: ctx.client.legalText || '',
+    conversionNote: ctx.conversionNote || '',
     translations: {
       invoice: t.invoice || 'Invoice',
       invoiceNr: t.invoiceNr || 'Invoice No.',
