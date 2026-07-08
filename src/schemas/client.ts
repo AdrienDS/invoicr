@@ -71,6 +71,8 @@ export const clientSchema = z.object({
   bankLabel: z.string().optional(),
   paymentTermsDays: z.number().int().positive().nullable().optional(),
   email: emailConfigSchema.optional(),
+  // Arbitrary legal/terms text appended to every invoice for this client
+  legalText: z.string().optional(),
   // Future fields (1.3.0+)
   taxRate: z.number().min(0).max(1).optional(),
   lineItems: z.array(lineItemSchema).optional(),

@@ -212,6 +212,8 @@ export interface Client {
   bankLabel?: string;
   paymentTermsDays?: number | null;
   email?: EmailConfig;
+  // Arbitrary legal/terms text appended to every invoice for this client
+  legalText?: string;
   // Future fields (1.3.0+)
   lineItems?: LineItem[];
   taxRate?: number;  // 0-1, e.g., 0.19 for 19%

@@ -211,6 +211,12 @@ describe('validateClient', () => {
     expect(result.templateName).toBe('my-custom-template');
   });
 
+  it('should accept optional legalText', () => {
+    const clientWithLegalText = { ...validClient, legalText: 'Late payments incur a 5% fee per month overdue.' };
+    const result = validateClient(clientWithLegalText);
+    expect(result.legalText).toBe('Late payments incur a 5% fee per month overdue.');
+  });
+
   it('should throw on invalid language', () => {
     const invalid = { ...validClient, language: 'fr' };
     expect(() => validateClient(invalid)).toThrow('Invalid client config');
